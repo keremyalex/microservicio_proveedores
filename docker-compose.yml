@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  mysql-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: proveedores_db
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - proveedores-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  proveedores-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=mysql+pymysql://root:root@mysql-db/proveedores_db
+    networks:
+      - proveedores-network
+    volumes:
+      - ./app:/app/app
+
+networks:
+  proveedores-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
