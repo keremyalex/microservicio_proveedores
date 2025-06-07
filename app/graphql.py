@@ -63,40 +63,63 @@ class Query:
     @strawberry.field
     def proveedores(self, info) -> List[Proveedor]:
         db = next(get_db())
-        return db.query(ProveedorModel).all()
+        try:
+            return db.query(ProveedorModel).all()
+        except Exception as e:
+            raise Exception(f"Error al obtener proveedores: {str(e)}")
 
     @strawberry.field
-    def compra(self, info, id: int) -> Optional[Compra]:
+    def compra(self, info, id: int) -> CompraResponse:
         db = next(get_db())
-        compra = db.query(CompraModel).filter(CompraModel.id == id).first()
-        if not compra:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Error: No se encontró la compra con ID {id}"
+        try:
+            compra = db.query(CompraModel).filter(CompraModel.id == id).first()
+            if not compra:
+                return CompraResponse(
+                    error=Error(
+                        message=f"No se encontró la compra con ID {id}",
+                        code="NOT_FOUND"
+                    )
+                )
+            return CompraResponse(compra=compra)
+        except Exception as e:
+            return CompraResponse(
+                error=Error(
+                    message=str(e),
+                    code="INTERNAL_ERROR"
+                )
             )
-        return compra
 
     @strawberry.field
     def compras(self, info) -> List[Compra]:
         db = next(get_db())
-        compras = db.query(CompraModel).all()
-        if not compras:
-            raise HTTPException(
-                status_code=404,
-                detail="Error: No hay compras registradas en el sistema"
-            )
-        return compras
+        try:
+            compras = db.query(CompraModel).all()
+            if not compras:
+                return []
+            return compras
+        except Exception as e:
+            raise Exception(f"Error al obtener compras: {str(e)}")
 
 @strawberry.type
 class Mutation:
     @strawberry.mutation
-    def crear_proveedor(self, info, input: ProveedorInput) -> Proveedor:
+    def crear_proveedor(self, info, input: ProveedorInput) -> ProveedorResponse:
         db = next(get_db())
         try:
             if not input.nombre:
-                raise Exception("El nombre del proveedor es requerido")
+                return ProveedorResponse(
+                    error=Error(
+                        message="El nombre del proveedor es requerido",
+                        code="VALIDATION_ERROR"
+                    )
+                )
             if not input.nit:
-                raise Exception("El NIT del proveedor es requerido")
+                return ProveedorResponse(
+                    error=Error(
+                        message="El NIT del proveedor es requerido",
+                        code="VALIDATION_ERROR"
+                    )
+                )
             
             proveedor = ProveedorModel(
                 nombre=input.nombre,
@@ -108,28 +131,53 @@ class Mutation:
             db.add(proveedor)
             db.commit()
             db.refresh(proveedor)
-            return proveedor
+            return ProveedorResponse(proveedor=proveedor)
         except IntegrityError:
             db.rollback()
-            raise Exception(f"Ya existe un proveedor registrado con el NIT {input.nit}")
+            return ProveedorResponse(
+                error=Error(
+                    message=f"Ya existe un proveedor registrado con el NIT {input.nit}",
+                    code="DUPLICATE_ERROR"
+                )
+            )
         except Exception as e:
             db.rollback()
-            raise Exception(str(e))
+            return ProveedorResponse(
+                error=Error(
+                    message=str(e),
+                    code="INTERNAL_ERROR"
+                )
+            )
 
     @strawberry.mutation
-    def actualizar_proveedor(self, info, id: int, input: ProveedorUpdateInput) -> Proveedor:
+    def actualizar_proveedor(self, info, id: int, input: ProveedorUpdateInput) -> ProveedorResponse:
         db = next(get_db())
         try:
             proveedor = db.query(ProveedorModel).filter(ProveedorModel.id == id).first()
             if not proveedor:
-                raise Exception(f"No se encontró el proveedor con ID {id}")
+                return ProveedorResponse(
+                    error=Error(
+                        message=f"No se encontró el proveedor con ID {id}",
+                        code="NOT_FOUND"
+                    )
+                )
             
             if all(v is None for v in [input.nombre, input.direccion, input.telefono, input.email]):
-                raise Exception("Debe proporcionar al menos un campo para actualizar")
+                return ProveedorResponse(
+                    error=Error(
+                        message="Debe proporcionar al menos un campo para actualizar",
+                        code="VALIDATION_ERROR"
+                    )
+                )
             
             if input.nombre is not None:
                 if not input.nombre.strip():
-                    raise Exception("El nombre no puede estar vacío")
+                    return ProveedorResponse(
+                        error=Error(
+                            message="El nombre no puede estar vacío",
+                            code="VALIDATION_ERROR"
+                        )
+                    )
                 proveedor.nombre = input.nombre
             if input.direccion is not None:
                 proveedor.direccion = input.direccion
@@ -140,41 +188,74 @@ class Mutation:
             
             db.commit()
             db.refresh(proveedor)
-            return proveedor
+            return ProveedorResponse(proveedor=proveedor)
         except Exception as e:
             db.rollback()
-            raise Exception(str(e))
+            return ProveedorResponse(
+                error=Error(
+                    message=str(e),
+                    code="INTERNAL_ERROR"
+                )
+            )
 
     @strawberry.mutation
-    def eliminar_proveedor(self, info, id: int) -> bool:
+    def eliminar_proveedor(self, info, id: int) -> DeleteResponse:
         db = next(get_db())
         try:
             proveedor = db.query(ProveedorModel).filter(ProveedorModel.id == id).first()
             if not proveedor:
-                raise Exception(f"No se encontró el proveedor con ID {id}")
+                return DeleteResponse(
+                    success=False,
+                    error=Error(
+                        message=f"No se encontró el proveedor con ID {id}",
+                        code="NOT_FOUND"
+                    )
+                )
             
             if proveedor.compras:
-                raise Exception("No se puede eliminar el proveedor porque tiene compras asociadas. Elimine primero las compras.")
+                return DeleteResponse(
+                    success=False,
+                    error=Error(
+                        message="No se puede eliminar el proveedor porque tiene compras asociadas. Elimine primero las compras.",
+                        code="CONSTRAINT_ERROR"
+                    )
+                )
             
             db.delete(proveedor)
             db.commit()
-            return True
+            return DeleteResponse(success=True)
         except Exception as e:
             db.rollback()
-            raise Exception(str(e))
+            return DeleteResponse(
+                success=False,
+                error=Error(
+                    message=str(e),
+                    code="INTERNAL_ERROR"
+                )
+            )
 
     @strawberry.mutation
-    def crear_compra(self, info, input: CompraInput) -> Compra:
+    def crear_compra(self, info, input: CompraInput) -> CompraResponse:
         db = next(get_db())
         try:
             # Verificar que el proveedor existe
             proveedor = db.query(ProveedorModel).filter(ProveedorModel.id == input.proveedorId).first()
             if not proveedor:
-                raise Exception(f"No existe un proveedor con ID {input.proveedorId}")
+                return CompraResponse(
+                    error=Error(
+                        message=f"No existe un proveedor con ID {input.proveedorId}",
+                        code="NOT_FOUND"
+                    )
+                )
 
             # Validar que hay detalles en la compra
             if not input.detalles:
-                raise Exception("La compra debe tener al menos un detalle")
+                return CompraResponse(
+                    error=Error(
+                        message="La compra debe tener al menos un detalle",
+                        code="VALIDATION_ERROR"
+                    )
+                )
 
             # Calcular el total de la compra
             total = sum(detalle.cantidad * detalle.precioUnitario for detalle in input.detalles)
@@ -192,14 +273,18 @@ class Mutation:
             # Crear los detalles de la compra
             for i, detalle in enumerate(input.detalles, 1):
                 if detalle.cantidad <= 0:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Error: La cantidad en el detalle {i} debe ser mayor a 0"
+                    return CompraResponse(
+                        error=Error(
+                            message=f"La cantidad en el detalle {i} debe ser mayor a 0",
+                            code="VALIDATION_ERROR"
+                        )
                     )
                 if detalle.precioUnitario <= 0:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Error: El precio unitario en el detalle {i} debe ser mayor a 0"
+                    return CompraResponse(
+                        error=Error(
+                            message=f"El precio unitario en el detalle {i} debe ser mayor a 0",
+                            code="VALIDATION_ERROR"
+                        )
                     )
                 
                 detalle_compra = DetalleCompraModel(
@@ -213,53 +298,64 @@ class Mutation:
             
             db.commit()
             db.refresh(compra)
-            return compra
-        except HTTPException as e:
-            db.rollback()
-            raise e
+            return CompraResponse(compra=compra)
         except Exception as e:
             db.rollback()
-            raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+            return CompraResponse(
+                error=Error(
+                    message=str(e),
+                    code="INTERNAL_ERROR"
+                )
+            )
 
     @strawberry.mutation
-    def actualizar_compra(self, info, id: int, input: CompraUpdateInput) -> Compra:
+    def actualizar_compra(self, info, id: int, input: CompraUpdateInput) -> CompraResponse:
         db = next(get_db())
         try:
             compra = db.query(CompraModel).filter(CompraModel.id == id).first()
             if not compra:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Error: No se encontró la compra con ID {id}"
+                return CompraResponse(
+                    error=Error(
+                        message=f"No se encontró la compra con ID {id}",
+                        code="NOT_FOUND"
+                    )
                 )
             
             # Validar el estado
             estados_validos = ["pendiente", "completada", "cancelada"]
             if input.estado not in estados_validos:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Error: Estado no válido. Los estados permitidos son: {', '.join(estados_validos)}"
+                return CompraResponse(
+                    error=Error(
+                        message=f"Estado no válido. Los estados permitidos son: {', '.join(estados_validos)}",
+                        code="VALIDATION_ERROR"
+                    )
                 )
             
             compra.estado = input.estado
             db.commit()
             db.refresh(compra)
-            return compra
-        except HTTPException as e:
-            db.rollback()
-            raise e
+            return CompraResponse(compra=compra)
         except Exception as e:
             db.rollback()
-            raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+            return CompraResponse(
+                error=Error(
+                    message=str(e),
+                    code="INTERNAL_ERROR"
+                )
+            )
 
     @strawberry.mutation
-    def eliminar_compra(self, info, id: int) -> bool:
+    def eliminar_compra(self, info, id: int) -> DeleteResponse:
         db = next(get_db())
         try:
             compra = db.query(CompraModel).filter(CompraModel.id == id).first()
             if not compra:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Error: No se encontró la compra con ID {id}"
+                return DeleteResponse(
+                    success=False,
+                    error=Error(
+                        message=f"No se encontró la compra con ID {id}",
+                        code="NOT_FOUND"
+                    )
                 )
             
             # Eliminar primero los detalles de la compra
@@ -268,13 +364,19 @@ class Mutation:
             
             db.delete(compra)
             db.commit()
-            return True
+            return DeleteResponse(success=True)
         except Exception as e:
             db.rollback()
-            raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+            return DeleteResponse(
+                success=False,
+                error=Error(
+                    message=str(e),
+                    code="INTERNAL_ERROR"
+                )
+            )
 
 schema = strawberry.federation.Schema(
     query=Query,
     mutation=Mutation,
     enable_federation_2=True
-) 
+)
