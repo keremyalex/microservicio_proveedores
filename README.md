@@ -1,14 +1,21 @@
 # Microservicio de Proveedores y Abastecimiento
 
-Este microservicio forma parte de un sistema distribuido y se encarga de la gestión de proveedores y compras. Está construido con FastAPI, GraphQL (Strawberry) y MySQL.
+Este microservicio forma parte de un sistema distribuido y se encarga de la gestión de proveedores y compras. Está construido con FastAPI, GraphQL (Strawberry) y MySQL, y está containerizado con Docker.
 
 ## Requisitos
 
+### Opción 1: Ejecución Local
 - Python 3.8+
 - MySQL
 - pip (gestor de paquetes de Python)
 
-## Instalación
+### Opción 2: Ejecución con Docker
+- Docker
+- Docker Compose
+
+## Instalación y Ejecución
+
+### Opción 1: Ejecución Local
 
 1. Crear un entorno virtual:
 ```bash
@@ -33,12 +40,16 @@ PORT=8003
 CREATE DATABASE proveedores_db;
 ```
 
-## Ejecución
-
-Para ejecutar el servidor:
-
+5. Ejecutar el servidor:
 ```bash
 python -m app.main
+```
+
+### Opción 2: Ejecución con Docker
+
+1. Construir y ejecutar los contenedores:
+```bash
+docker-compose up --build
 ```
 
 El servidor estará disponible en:
